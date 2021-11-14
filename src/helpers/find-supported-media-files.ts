@@ -24,7 +24,11 @@ export async function findSupportedMediaFiles(inputDir: string, outputDir: strin
     const jsonFileExists = jsonFilePath ? existsSync(jsonFilePath) : false;
 
     const outputFileName = generateUniqueOutputFileName(mediaFilePath, allUsedOutputFilesLowerCased);
-    const outputFilePath = resolve(outputDir, outputFileName);
+
+    const inputStr = resolve(inputDir);
+    const folderName = resolve(outputDir, mediaFilePath.replace(inputStr,'.'));
+
+    const outputFilePath = folderName;
 
     mediaFiles.push({
       mediaFilePath,

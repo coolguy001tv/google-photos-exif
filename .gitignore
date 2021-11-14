@@ -123,3 +123,6 @@ dist
 
 
 .idea
+output/
+error/
+takeout/
