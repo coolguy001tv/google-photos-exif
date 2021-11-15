@@ -1,16 +1,16 @@
-import { Command, flags } from '@oclif/command';
+import {Command, flags} from '@oclif/command';
 import * as Parser from '@oclif/parser';
-import { existsSync, promises as fspromises } from 'fs';
-import { CONFIG } from './config';
-import { doesFileHaveExifDate } from './helpers/does-file-have-exif-date';
-import { findSupportedMediaFiles } from './helpers/find-supported-media-files';
-import { readPhotoTakenTimeFromGoogleJson } from './helpers/read-photo-taken-time-from-google-json';
-import { updateExifMetadata } from './helpers/update-exif-metadata';
-import { updateFileModificationDate } from './helpers/update-file-modification-date';
-import { Directories } from './models/directories'
+import {existsSync, promises as fspromises, stat} from 'fs';
+import {CONFIG} from './config';
+import {doesFileHaveExifDate} from './helpers/does-file-have-exif-date';
+import {findSupportedMediaFiles} from './helpers/find-supported-media-files';
+import {readPhotoTakenTimeFromGoogleJson} from './helpers/read-photo-taken-time-from-google-json';
+import {updateExifMetadata} from './helpers/update-exif-metadata';
+import {updateFileModificationDate} from './helpers/update-file-modification-date';
+import {Directories} from './models/directories'
 import {dirname} from "path";
 
-const { readdir, mkdir, copyFile } = fspromises;
+const {readdir, mkdir, copyFile} = fspromises;
 
 class GooglePhotosExif extends Command {
   static description = `Takes in a directory path for an extracted Google Photos Takeout. Extracts all photo/video files (based on the conigured list of file extensions) and places them into an output directory. All files will have their modified timestamp set to match the timestamp specified in Google's JSON metadata files (where present). In addition, for file types that support EXIF, the EXIF "DateTimeOriginal" field will be set to the timestamp from Google's JSON metadata, if the field is not already set in the EXIF metadata.`;
@@ -35,11 +35,11 @@ class GooglePhotosExif extends Command {
     }),
   }
 
-  static args: Parser.args.Input  = []
+  static args: Parser.args.Input = []
 
   async run() {
-    const { args, flags} = this.parse(GooglePhotosExif);
-    const { inputDir, outputDir, errorDir } = flags;
+    const {args, flags} = this.parse(GooglePhotosExif);
+    const {inputDir, outputDir, errorDir} = flags;
 
     try {
       // const str = resolve(inputDir);
@@ -96,6 +96,37 @@ class GooglePhotosExif extends Command {
     }
   }
 
+  private async findDupFileByName(pathName: string) {
+    return new Promise(resolve => {
+      const finder = '(1).';
+      if (pathName.indexOf(finder) !== -1) {
+        stat(pathName.replace(finder, '.'), function (err, stats) {
+          if (err) {
+            console.log(err, '文件不存在？');
+            resolve(true);// 继续
+            return;
+          }
+          const {size: oriSize} = stats;
+
+          stat(pathName, function (err, stats) {
+            const {size} = stats; // 原始图片大小
+            if (size === oriSize) {
+              console.log('!!!!!!!!!!!!!!当前文件大小相同', pathName);
+              resolve(false);
+              return;
+            }
+            resolve(true);
+          })
+
+        })
+
+      }else{
+        resolve(true);
+      }
+    })
+
+  }
+
   private async processMediaFiles(directories: Directories): Promise<void> {
     // Find media files
     const supportedMediaFileExtensions = CONFIG.supportedMediaFileTypes.map(fileType => fileType.extension);
@@ -121,11 +152,17 @@ class GooglePhotosExif extends Command {
 
       // Copy the file into output directory
       this.log(`Copying file ${i} of ${mediaFiles.length}: ${mediaFile.mediaFilePath} -> ${mediaFile.outputFileName}`);
-      try{
-        await mkdir(dirname(mediaFile.outputFilePath),{recursive:true})
-      }catch (e){
+      try {
+        await mkdir(dirname(mediaFile.outputFilePath), {recursive: true})
+      } catch (e) {
 
       }
+      // copy 之前确认一下是否带了(1)，如果带了，检查不带的版本大小是否一样，一样的话不要他
+      const flag = await this.findDupFileByName(mediaFile.mediaFilePath);
+      if (!flag) {
+        continue;
+      }
+
       await copyFile(mediaFile.mediaFilePath, mediaFile.outputFilePath);
 
       // Process the output file, setting the modified timestamp and/or EXIF metadata where necessary
